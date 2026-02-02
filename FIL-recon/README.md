@@ -4,6 +4,8 @@ This repository contains MATLAB code for use with Gadgetron that implements the 
 
 **"MORSE CODE: Multiple Orthogonal Reference Sensitivity Encoding Combined Over Dominant Eigencoils" by O. Josephs and B. Dymerska et al.**
 
+https://arxiv.org/abs/2510.09098
+
 If you use these scripts for your work, please cite this paper.
 
 ## Installation instructions
