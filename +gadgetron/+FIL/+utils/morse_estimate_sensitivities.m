@@ -81,7 +81,14 @@ S = squeeze(S(:,:,:,1:N_ref+1:end));
 % truncating sensitivities up to N_order
 sens = sens(:,:,:,1:N_order,:);
 % N_order regularisation terms from S principal value maps, (used in Eq. 11):
-regu = lambda ./ (S(:,:,:,1:N_order) + eps);          % [RO, PE1, PE2, N_ref, N_coils]
+if strcmp(lambda,'auto')
+    regu = 1./(S(:,:,:,1:N_order) + eps); % [RO, PE1, PE2, N_ref, N_coils]
+    lambda = 10^2/ prctile(regu(:),99.9) ;
+    fprintf('automatically selected regularisation factor lambda = %.2e\n',lambda)
+    regu = lambda*regu ;
+else
+    regu = lambda./ (S(:,:,:,1:N_order) + eps); % [RO, PE1, PE2, N_ref, N_coils]
+end
 
 
 %% Dymerska et al. Virtual Reference Coil phase correction to obtain phase data

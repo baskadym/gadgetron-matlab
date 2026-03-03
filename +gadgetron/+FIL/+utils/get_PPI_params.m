@@ -18,4 +18,8 @@ else
     PPIparams.caipiFactor = 0;
 end
 
+% Calculating smoothing kernel
+PPIparams.FoV = header.encoding.encodedSpace.fieldOfView_mm;
+PPIparams.matSize = header.encoding.encodedSpace.matrixSize;
+
 end

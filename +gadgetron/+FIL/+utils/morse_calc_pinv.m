@@ -13,6 +13,14 @@ function pinv_sens = morse_calc_pinv(ref, PPIparams)
 global scaleKsp w N_ref N_order
 
 [RO, PE1, PE2, N_coils] = size(ref);
+
+if strcmp(w, 'auto')
+    % Smoothing for sensitiviy calculation in physical units (4 mm)
+    % adapts "w" to the resolution ~0.6 mm (res) -> 6 voxels and 1.2 mm (res) -> 3 voxels
+    w = 6 * 0.8 / geomean(PPIparams.FoV.y/PPIparams.matSize.y, PPIparams.FoV.z/PPIparams.matSize.z);
+end
+disp("w = " + w + " voxels.");
+
 PAD                 = w*[0 0 0];           % Padding for smoothing
 
 %% Apply constraint: N_order capped at number of references
