@@ -9,6 +9,13 @@ https://arxiv.org/abs/2510.09098
 If you use these scripts for your work, please cite this paper.
 
 ## Installation instructions
+
+### MATLAB
+This reconstruction requires MATLAB R2022b or a later version.
+
+To avoid using multiple MATLAB licenses across different container versions, we mount `/usr/local/MATLAB` from the host system into the container (see Creating Docker Image instructions). This allows all containers to use a single MATLAB installation and license located on the host OS (i.e., outside the container).
+
+
 ### Docker
 This reconstruction is executed within a Docker container to isolate it and ensure reproducibility. To install Docker Engine for your specific environment, please refer to the official Docker website for instructions:
 https://docs.docker.com/engine/install/
