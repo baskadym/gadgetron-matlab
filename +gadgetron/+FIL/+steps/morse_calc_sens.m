@@ -53,7 +53,7 @@ end
         % We assume readout oversampling has been removed:
         tic
         pinv_sens = zeros(PPIparams.accPE*PPIparams.acc3D, N_coils, RO, PE1/PPIparams.accPE, PE2/PPIparams.acc3D, 'like', ref);
-        [sens, regu] = gadgetron.FIL.utils.morse_estimate_sensitivities(ref, PAD, PPIparams.measID);
+        [sens, regu] = gadgetron.FIL.utils.morse_estimate_sensitivities(ref, PAD, PPIparams);
         toc
         %% Compute pseudo-inverse of sensitivities
         pinv_sens(:,:,:,:,:) = gadgetron.FIL.utils.morse_pseudoinvert_sensitivities(sens(:,:,:,1:N_order,:), regu, PPIparams.accPE, PPIparams.acc3D);

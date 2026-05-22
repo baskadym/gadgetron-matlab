@@ -1,5 +1,10 @@
 
 function main()
+
+    % Workaround for occasional blank windows when Matlab run as root (as in container)
+    % https://uk.mathworks.com/support/bugreports/details/2794932
+    % Fixed in Matlab R2023a
+    setenv('MW_CEF_STARTUP_OPTIONS', '--in-process-gpu');
     
     port = getenv('GADGETRON_EXTERNAL_PORT');
     module = getenv('GADGETRON_EXTERNAL_MODULE');

@@ -1,95 +1,108 @@
-function sens = vrc_phase_correction(sens, ref_mag, measID, N_coils, gadNoiseDir, scaleNoiseCov, vrc_mask_thr, noise_cov_power)
-
+function [sens, noise_cov] = vrc_phase_correction(sens, ref_mag, PPIparams, N_coils, gadNoiseDir, scaleNoiseCov, vrc_mask_thr, noise_cov_power)
 %**************************************************************************
 %
 %   vrc_phase_correction
 %
 %       input   sens: image space sensitivities [RO, PE1, PE2, N_order, N_coils]
 %               ref_mag: root sum of squares of separate channel reference magnitude data
-%               measID: measurement ID for noise adjustment
+%               PPIparams: PPI parameters structure
 %               N_coils: number of coils
 %               gadNoiseDir: location of noise covariance matrix
 %               scaleNoiseCov: empirical scaling for numerical stability
+%               vrc_mask_thr: threshold for VRC mask creation (fraction of mean)
+%               noise_cov_power: power to which noise covariance matrix is raised during correlation
 %
 %       output  sens: image space sensitivities after VRC correction [RO, PE1, PE2, N_order, N_coils]
-%
+%               noise_cov: the noise covariance matrix
 %**************************************************************************
+global smap_noise_cov
+measID = PPIparams.measID;
 
-%% Loading noise covariance matrix from a serialised file saved by NoiseAdjustGadget:
+noise_cov    = [];
+do_correlate = false;
 
-% create a structure with directory content:
-dirc = dir(gadNoiseDir);
+%% ------------------------------------------------------------
+% Load noise covariance matrix
+% ------------------------------------------------------------
 
-% if no noise pre-whitening was performed, no correlation operation is performed:
-sens_corr = sens(:,:,:,1,:);
+if strcmp(PPIparams.refType,'separate')
 
-% Need to be able to find a file in gadNoiseDir and for it to have the same ID as measID.
-if ~isempty(dirc)
-    % filtering out all folders to get only file names:
-    dirc = dirc(find(~cellfun(@isfolder,cellfun(@fullfile, {dirc(:).folder},{dirc(:).name}, 'UniformOutput', false))));
-    
-    % dirc.datenum field increases in chronological order and we need the last one:
-    [~,LatestFileIndex] = max([dirc(:).datenum]);
-    if ~isempty(LatestFileIndex)
-        noise_cov_latestfile = fullfile(dirc(LatestFileIndex).folder,dirc(LatestFileIndex).name);
-
-        noise_cov_measID = textread(noise_cov_latestfile, '%c');
-        noise_cov_measID = extractBetween(noise_cov_measID(:)', '<measurementID>','</measurementID>') ;
-
-        % Siemens-specific allowance for retro recon on VE11c
-        % noise_cov_measID will have two cell entries: the original meadID and the retro-recon measID 
-        % starting with 300000.  Retain only the first to match what is passed to this function.
-        if strcmp(measID, noise_cov_measID(1))
-
-                disp('loading noise covariance')
-                fid = fopen(noise_cov_latestfile);
-                % below 8 = 2*4, 2 is for real and imaginary and 4 is for byte single data type
-                % and this is per element of covariance matrix with N_coils*N_coils elements:
-                fseek(fid, -N_coils*N_coils*8, 1);
-                noise_cov = fread(fid, 'single=>single');
-                noise_cov = reshape(noise_cov, [2 N_coils N_coils]);
-                noise_cov = squeeze(noise_cov(1,:,:) + 1i*noise_cov(2,:,:));
-                noise_cov = noise_cov*scaleNoiseCov;
-                fclose(fid);
-                
-                disp('correlating (i.e. unwhitening) the sensitivities (necessary for robust VRC estimation)')
-                sz = size(sens);
-                sens_corr = reshape(sens(:,:,:,1,:), [], N_coils);
-                sens_corr = sens_corr*chol(noise_cov,'upper')^noise_cov_power;
-                sens_corr = reshape(sens_corr, sz(1), sz(2), sz(3), [], N_coils);
-        else
-            warning('meas ID for data and noise covariance file are different')
-            warning('correlation of the sensitivities for robust VRC astimation will not be performed')
-        end
+    disp('Separate calibration data - using noise covariance matrix from a previous scan')
+    if numel(smap_noise_cov) > 1
+        disp('Loading noise covariance matrix')
+        noise_cov    = smap_noise_cov;
+        do_correlate = true;
     else
-        warning('no noise covariance matrix available in the storage directory')
-        warning('correlation of the sensitivities for robust VRC astimation will not be performed')        
+        warning('No noise covariance from smap acquisition')
+    end
+
+else
+    disp('Fully sampled or integrated calibration data - loading noise covariance from the same scan')
+
+    dirc = dir(gadNoiseDir);
+    dirc = dirc(~[dirc.isdir]);   % keep only files
+
+    if isempty(dirc)
+        warning('No noise covariance matrix available')
+    else
+        [~, idx] = max([dirc.datenum]);
+        fname   = fullfile(dirc(idx).folder, dirc(idx).name);
+
+        txt = fileread(fname);
+        measIDs = extractBetween(txt,'<measurementID>','</measurementID>');
+
+        if strcmp(measID, measIDs{1})
+            disp('Loading noise covariance matrix')
+            fid = fopen(fname);
+            fseek(fid, -N_coils*N_coils*8, 1);
+            noise_val = fread(fid,'single=>single');
+            fclose(fid);
+
+            noise_val = reshape(noise_val,[2 N_coils N_coils]);
+            noise_cov = squeeze(noise_val(1,:,:) + ...
+                                1i*noise_val(2,:,:)) * scaleNoiseCov;
+            do_correlate = true;
+        else
+            warning('Measurement ID mismatch – skipping noise_cov phase correlation')
+        end
     end
 end
 
-% VRC phase correction is performed (regardless of whether noise pre-whitening was performed):
-disp('VRC phase correction')
-sens_diff = zeros(size(sens(:,:,:,1,:))); % correct only the first N_order
+%% ------------------------------------------------------------
+% Correlate (unwhiten) sensitivities if possible
+% ------------------------------------------------------------
 
-% selection of a seed voxel for phase matching
-% seed voxel defined as a weighted centroid of a masked ROI
-mask = imbinarize(ref_mag,mean(ref_mag(:))*vrc_mask_thr) ;
-props = regionprops3(mask,ref_mag, 'WeightedCentroid', 'Volume', 'VoxelIdxList');
-[~, idx_maxvol] = max(props.Volume);
-centroid = round(props.WeightedCentroid(idx_maxvol, :));
-centroid = centroid([2 1 3]); % in MATLAB centroid's 1st and 2nd dimentions are swapped - this reverses the process
+sens_corr = sens(:,:,:,1,:);
 
-
-for ch = 1 : N_coils
-    % Coil-wise phasing at seed voxel location:
-    sens_diff(:,:,:,1,ch) = sens_corr(:,:,:,1,ch).*exp(-1i*angle(sens_corr(centroid(1),centroid(2), centroid(3),1,ch)));
+if do_correlate
+    disp('Correlating sensitivities for robust VRC estimation')
+    sz        = size(sens_corr);
+    sens_mat = reshape(sens_corr,[],N_coils);
+    sens_mat = sens_mat * chol(noise_cov,'upper')^noise_cov_power;
+    sens_corr = reshape(sens_mat,sz);
 end
 
-% Sum over coils to get virtual reference coil (VRC) phase, which is then removed:
-sens_sum = sum(sens_diff, 5);
+%% ------------------------------------------------------------
+% VRC phase correction
+% ------------------------------------------------------------
 
-sens(:,:,:,1,:) = sens(:,:,:,1,:).*exp(-1i*angle(sens_sum)) ;
+disp('VRC phase correction')
 
+% Seed voxel selection
+mask  = imbinarize(ref_mag, mean(ref_mag(:)) * vrc_mask_thr);
+props = regionprops3(mask, ref_mag, 'WeightedCentroid','Volume');
 
+[~, idx] = max(props.Volume);
+centroid = round(props.WeightedCentroid(idx,[2 1 3]));
 
+% Coil-wise phase-matching at a seed voxel
+sens_diff = zeros(size(sens_corr),'like',sens_corr);
+for ch = 1:N_coils
+    sens_diff(:,:,:,1,ch) = sens_corr(:,:,:,1,ch) .* exp(-1i*angle(sens_corr(centroid(1),centroid(2),centroid(3),1,ch)));
+end
 
+% Remove VRC phase from coil sensitivites
+sens_sum = sum(sens_diff,5);
+sens(:,:,:,1,:) = sens(:,:,:,1,:) .* exp(-1i*angle(sens_sum));
+
+end
