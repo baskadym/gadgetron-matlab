@@ -1,5 +1,3 @@
-%% write_to_disk
-
 %**************************************************************************
 %
 %   Writing data to disk for later use. Developed for writing sensitivities
