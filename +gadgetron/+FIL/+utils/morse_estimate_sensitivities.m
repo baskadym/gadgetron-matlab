@@ -13,7 +13,8 @@ function [sens, regu, noise_cov] = morse_estimate_sensitivities(ref, PAD, PPIpar
 %**************************************************************************
 global gadNoiseDir scaleNoiseCov vrc_mask_thr noise_cov_power ph_correction w N_ref N_order sens_grad_scale lambda
 
-%% Josephs et al. 2.2.1 Reduced voxel-wise computation
+%% Josephs, Dymerska et al., Online image reconstruction via Multiple Orthogonal Reference Sensitivity Encoding (MORSE), 
+%% MAGMA 2026 in print, C.1 Reduced voxel-wise computation
 % Extract only the reference data for computational efficiency
 [RO, PE1, PE2, N_coils] = size(ref);
 ref = reshape(ref, [], N_coils);      %[RO*PE1*PE2, N_coils]
@@ -41,7 +42,8 @@ ref = gadgetron.FIL.utils.cifftn(ref, 2:3);
 E = conj(ref(:,:,:,1:N_ref(1))).*permute(ref,[1 2 3 5 4]); 
 
 
-%% Josephs et al. 2.2.2 Flexible spatial weighting
+%% Josephs, Dymerska et al., Online image reconstruction via Multiple Orthogonal Reference Sensitivity Encoding (MORSE), 
+%% MAGMA 2026 in print, C.2 Flexible spatial weighting
 % Apply smoothing in all three spatial dimensions (Eq. 8):
 % Note: E is reused for memory efficiency.
 E = gadgetron.FIL.utils.mysmooth(E, w, PAD);
@@ -58,7 +60,8 @@ if length(N_ref) > 1
 end
 
 
-%% Josephs et al. 2.2.3 Higher-order sensitivity estimation
+%% Josephs, Dymerska et al., Online image reconstruction via Multiple Orthogonal Reference Sensitivity Encoding (MORSE), 
+%% MAGMA 2026 in print, C.3 Higher order sensitivity estimation
 disp('E svd');
 % Voxel-wise SVD of E^w (Eq. 9)
 % Permute to bring (eigen) targets-by-refs dimensions to beginning:
@@ -90,7 +93,9 @@ else
     regu = lambda./ (S(:,:,:,1:N_order) + eps); % [RO, PE1, PE2, N_ref, N_coils]
 end
 
-%% Dymerska et al. Virtual Reference Coil phase correction to obtain phase data
+%% Dymerska et al. MORSE-PI – Flexible and artefact-free image reconstruction for structural and functional QSM and other phase-critical imaging applications.
+%% arXiv 2026 (https://arxiv.org/abs/2606.21336)
+% Virtual Reference Coil phase correction to obtain phase data
 % free from open-ended fringe lines
 if strcmp(ph_correction, 'VRC')
     ref_mag = sqrt(sum(abs(ref).^2,4));

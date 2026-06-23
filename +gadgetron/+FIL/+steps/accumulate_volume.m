@@ -39,13 +39,21 @@ nEchoes     = header.encoding.encodingLimits.contrast.maximum+1;
 nSets       = header.encoding.encodingLimits.set.maximum+1;
 
 PPIparams = gadgetron.FIL.utils.get_PPI_params(header);
-if strcmp(header.encoding.parallelImaging.calibrationMode, 'embedded');
+if strcmp(header.encoding.parallelImaging.calibrationMode, 'embedded')
     nRefToCollect = PPIparams.totalRefLines;
 end
 
-% Zero-pad k-space for odd acceleration factors to ensure matrix divisibility.
-matrix_size.y_padded = ceil(matrix_size.y/PPIparams.accPE/2)*PPIparams.accPE*2 ;
-matrix_size.z_padded = ceil(matrix_size.z/PPIparams.acc3D/2)*PPIparams.acc3D*2 ;
+% Zero-pad k-space for odd acceleration factors or matrix sizes to ensure matrix divisibility.
+if mod(matrix_size.y,PPIparams.accPE)>0
+    matrix_size.y_padded = ceil(matrix_size.y/PPIparams.accPE/2)*PPIparams.accPE*2;
+else
+    matrix_size.y_padded = matrix_size.y;
+end
+if mod(matrix_size.z,PPIparams.acc3D)>0
+    matrix_size.z_padded = ceil(matrix_size.z/PPIparams.acc3D/2)*PPIparams.acc3D*2;
+else
+    matrix_size.z_padded = matrix_size.z;
+end
 
 disp('accumulate_volume setup...')
 
@@ -134,7 +142,7 @@ disp('accumulate_volume setup...')
                 % sensitivities, and regularisation factor.
                 [sRO, sPE1, sPE2, ~] = size(smap_data.ref); % k-space
 
-                % smap_data.ref stored by morse_sense_one as [RO, PE1, PE2,
+                % smap_data.ref stored by morse_unfold_unaccelerated as [RO, PE1, PE2,
                 % N_coils], in k-space.
                 % Pad this ref k-space data to match the dimensions of the
                 % undersampled data it is going to unfold. If morse_sense_one is

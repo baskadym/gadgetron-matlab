@@ -2,7 +2,7 @@ function next = morse_unfold_unaccelerated(input, PPIparams)
 
 %% %**************************************************************************
 %
-%   morse_sense_one computes sensitivities using MORSE and compute SENSE-1
+%   morse_unfold_unaccelerated computes sensitivities using MORSE and compute SENSE-1
 %   recon via S^H * data
 %       input "data" contains:
 %               a global header in .reference
@@ -35,7 +35,7 @@ else
     N_order = min(N_ref(1) + 3*N_ref(2), N_order);
 end
 
-    function data = morse_sense_one(data)
+    function data = morse_unfold_unaccelerated(data)
 
         if (PPIparams.accPE > 1) || (PPIparams.acc3D > 1)
             error('Expecting fully sampled acquisition')
@@ -99,6 +99,6 @@ end
         toc
 
     end
-    next = @() morse_sense_one(input());
+    next = @() morse_unfold_unaccelerated(input());
 end
 
