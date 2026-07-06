@@ -44,7 +44,7 @@ E = conj(ref(:,:,:,1:N_ref(1))).*permute(ref,[1 2 3 5 4]);
 
 %% Josephs, Dymerska et al., Online image reconstruction via Multiple Orthogonal Reference Sensitivity Encoding (MORSE), 
 %% MAGMA 2026 in print, Flexible spatial weighting
-% Apply smoothing in all three spatial dimensions (Eq. 8):
+% Apply smoothing in all three spatial dimensions (Eq. 3):
 % Note: E is reused for memory efficiency.
 E = gadgetron.FIL.utils.mysmooth(E, w, PAD);
 
@@ -63,7 +63,7 @@ end
 %% Josephs, Dymerska et al., Online image reconstruction via Multiple Orthogonal Reference Sensitivity Encoding (MORSE), 
 %% MAGMA 2026 in print, Higher-order sensitivity estimation
 disp('E svd');
-% Voxel-wise SVD of E^w (Eq. 9)
+% Voxel-wise SVD of E^w (Eq. 4)
 % Permute to bring (eigen) targets-by-refs dimensions to beginning:
 E = permute(E,[5 4 1 2 3]);           % [N_coils, N_ref, RO, PE1, PE2]
 
@@ -83,7 +83,7 @@ S = ipermute(S,[5 4 1 2 3]);                  % [RO, PE1, PE2, N_ref, N_ref]
 S = squeeze(S(:,:,:,1:N_ref+1:end));
 % truncating sensitivities up to N_order
 sens = sens(:,:,:,1:N_order,:);
-% N_order regularisation terms from S principal value maps, (Eq. 13):
+% N_order regularisation terms from S principal value maps:
 if strcmp(lambda,'auto')
     regu = 1./(S(:,:,:,1:N_order) + eps); % [RO, PE1, PE2, N_ref, N_coils]
     lambda = 100/ prctile(regu(:),99.9) ;
