@@ -14,7 +14,7 @@ function [sens, regu, noise_cov] = morse_estimate_sensitivities(ref, PAD, PPIpar
 global gadNoiseDir scaleNoiseCov vrc_mask_thr noise_cov_power ph_correction w N_ref N_order sens_grad_scale lambda
 
 %% Josephs, Dymerska et al., Online image reconstruction via Multiple Orthogonal Reference Sensitivity Encoding (MORSE), 
-%% MAGMA 2026 in print, C.1 Reduced voxel-wise computation
+%% MAGMA 2026 in print, Reduced voxel-wise computation
 % Extract only the reference data for computational efficiency
 [RO, PE1, PE2, N_coils] = size(ref);
 ref = reshape(ref, [], N_coils);      %[RO*PE1*PE2, N_coils]
@@ -43,7 +43,7 @@ E = conj(ref(:,:,:,1:N_ref(1))).*permute(ref,[1 2 3 5 4]);
 
 
 %% Josephs, Dymerska et al., Online image reconstruction via Multiple Orthogonal Reference Sensitivity Encoding (MORSE), 
-%% MAGMA 2026 in print, C.2 Flexible spatial weighting
+%% MAGMA 2026 in print, Flexible spatial weighting
 % Apply smoothing in all three spatial dimensions (Eq. 8):
 % Note: E is reused for memory efficiency.
 E = gadgetron.FIL.utils.mysmooth(E, w, PAD);
@@ -61,7 +61,7 @@ end
 
 
 %% Josephs, Dymerska et al., Online image reconstruction via Multiple Orthogonal Reference Sensitivity Encoding (MORSE), 
-%% MAGMA 2026 in print, C.3 Higher order sensitivity estimation
+%% MAGMA 2026 in print, Higher-order sensitivity estimation
 disp('E svd');
 % Voxel-wise SVD of E^w (Eq. 9)
 % Permute to bring (eigen) targets-by-refs dimensions to beginning:
