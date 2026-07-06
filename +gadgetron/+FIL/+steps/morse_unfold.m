@@ -21,7 +21,7 @@ function next = morse_unfold(input, header)
 
 disp("MORSE unfolding setup...")
 
-global scaleKsp
+global scaleKsp gadNoiseDir 
 
 nEchoes     = header.encoding.encodingLimits.contrast.maximum+1;
 nSets       = header.encoding.encodingLimits.set.maximum+1;
@@ -35,7 +35,6 @@ PPIparams   = gadgetron.FIL.utils.get_PPI_params(header);
         % Apply iFFT to image space
         % Note: assumes iFFT already applied in the RO direction at the time of RO oversampling removal
         data.data = gadgetron.FIL.utils.cifftn(data.data,3:4) .* scaleKsp;
-        toc
 
         disp("Unfolding...") % TO DO: Why is singleton dimension required?
         [~, ~, ~, PE1_over_accPE, PE2_over_acc3D] = size(data.sensitivities);

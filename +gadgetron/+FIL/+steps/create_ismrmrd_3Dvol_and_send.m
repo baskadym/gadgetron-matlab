@@ -21,7 +21,7 @@ res = [header.encoding.encodedSpace.fieldOfView_mm.x/header.encoding.encodedSpac
 
 disp("create_ismrmrd_3Dvol_and_send setup...")
 
-    function create_ismrmrd_3Dvol_and_send(image)
+    function image = create_ismrmrd_3Dvol_and_send(image)
 
         % What code version was used for the reconstruction? This will be added as a comment.
         [~,git_hash_string] = system('git rev-parse --short HEAD');
@@ -53,7 +53,7 @@ disp("create_ismrmrd_3Dvol_and_send setup...")
                 ismrmrd_3Dvol.header.field_of_view = [res(1)*matrix_size.x, res(2)*matrix_size.y, res(3)*matrix_size.z];
                 
                 disp("Sending scaled image to client.");
-                ismrmrd_3Dvol.data = ismrmrd_3Dvol.data.*scaleFactor;
+                ismrmrd_3Dvol.data = ismrmrd_3Dvol.data.*scaleFactor/(res(1)*res(2)*res(3))/round(header.acquisitionSystemInformation.systemFieldStrength_T);
                 ismrmrd_3Dvol.meta('GADGETRON_ImageComment') = ['Magnitude', git_hash_string];
                 connection.send(ismrmrd_3Dvol);
                 

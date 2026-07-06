@@ -1,3 +1,4 @@
+%%
 %**************************************************************************
 %
 %   accumulate_volume collects blocks of [ADC, N_coils] acquisitions.
@@ -30,31 +31,32 @@ arguments
     sensitivity_function = @gadgetron.FIL.utils.morse_calc_pinv;
     onlineROFT = false;
 end
-
+global gadNoiseDir smap_noise_cov
 kspace_centre_line_no_y = [];
 kspace_centre_line_no_z = [];
 matrix_size = header.encoding.encodedSpace.matrixSize; % [x,y,z]
 nEchoes     = header.encoding.encodingLimits.contrast.maximum+1;
 nSets       = header.encoding.encodingLimits.set.maximum+1;
 
-bEmbedRef = strcmp(header.encoding.parallelImaging.calibrationMode, 'embedded');
-if bEmbedRef
-    PPIparams = gadgetron.FIL.utils.get_PPI_params(header);
+PPIparams = gadgetron.FIL.utils.get_PPI_params(header);
+if strcmp(header.encoding.parallelImaging.calibrationMode, 'embedded')
     nRefToCollect = PPIparams.totalRefLines;
-else
-    % Needed for definition of data and sensitivities field sizes. Set to 1
-    % in this case for so that matrices are defined equivalently for back
-    % compatibility.
-    PPIparams.accPE = 1;
-    PPIparams.acc3D = 1;
 end
 
-% Zero-pad k-space for odd acceleration factors to ensure matrix divisibility.
-matrix_size.y_padded = ceil(matrix_size.y/PPIparams.accPE/2)*PPIparams.accPE*2 ;
-matrix_size.z_padded = ceil(matrix_size.z/PPIparams.acc3D/2)*PPIparams.acc3D*2 ;
-
+% Zero-pad k-space for odd acceleration factors or matrix sizes to ensure matrix divisibility.
+if mod(matrix_size.y,PPIparams.accPE)>0
+    matrix_size.y_padded = ceil(matrix_size.y/PPIparams.accPE/2)*PPIparams.accPE*2;
+else
+    matrix_size.y_padded = matrix_size.y;
+end
+if mod(matrix_size.z,PPIparams.acc3D)>0
+    matrix_size.z_padded = ceil(matrix_size.z/PPIparams.acc3D/2)*PPIparams.acc3D*2;
+else
+    matrix_size.z_padded = matrix_size.z;
+end
 
 disp('accumulate_volume setup...')
+
     function data = accumulate_volume(bucket, data)
 
         disp("Assembling buffer from bucket containing " + num2str(bucket.data.count + bucket.ref.count) + " acquisitions...");
@@ -80,15 +82,90 @@ disp('accumulate_volume setup...')
                 single(1i)...
                 );
 
-            % data.sensitivities arranged as [RO, PE1, PE2, N_coils]
-            data.sensitivities = zeros( ...
-                size(bucket.data.data, 1), ...
-                matrix_size.y_padded, ...
-                matrix_size.z_padded, ...
-                size(bucket.data.data, 2), ...
-                'like', ...
-                single(1i)...
-                );
+            if strcmp(PPIparams.refType, 'embedded') % MPM's v1 - Int. References
+
+                disp('Recon of undersampled data with embedded references')
+
+                % data.sensitivities arranged as [RO, PE1, PE2, N_coils]
+                data.sensitivities = zeros( ...
+                    size(bucket.data.data, 1), ...
+                    matrix_size.y_padded, ...
+                    matrix_size.z_padded, ...
+                    size(bucket.data.data, 2), ...
+                    'like', ...
+                    single(1i)...
+                    );
+
+                nRefToCollect = PPIparams.totalRefLines;
+
+            elseif strcmp(PPIparams.refType, 'separate') % MPM's v2 - Separate Reference
+
+                disp('Reading in sensitivity data for subsequent unfolding')
+
+                % data.sensitivities arranged as [RO, PE1, PE2, N_coils]
+                data.sensitivities = zeros( ...
+                    size(bucket.data.data, 1), ...
+                    matrix_size.y_padded, ...
+                    matrix_size.z_padded, ...
+                    size(bucket.data.data, 2), ...
+                    'like', ...
+                    single(1i)...
+                    );
+
+                % Read in sensitivity information from previous smaps:
+                pn = [gadNoiseDir filesep 'database-FIL'];
+                MeasID = header.measurementInformation.measurementID;
+                MID_parts = split(MeasID, '_');
+                targetMID = str2double(MID_parts{4});
+                MID_parts = [MID_parts{1} '_' MID_parts{2} '_' MID_parts{3} '_' ];
+                % Search for number that is closest to current MID
+                attempt = 1;
+                while ~exist('smap_data','var')
+                    targetMID = targetMID - 1;
+                    smap_dataFn = fullfile(pn, [MID_parts num2str(targetMID) '_sensitivity.mat']);
+                    try
+                        smap_data = load(smap_dataFn).data;
+                        disp(['Succesfully read in ' smap_dataFn])
+                        if attempt > 2
+                            disp(['Warning! s-map data may originate from previous scan ' smap_dataFn])
+                        end
+                    catch
+                        if attempt < 10
+                            attempt = attempt + 1;
+                        else
+                            error('Failed: Could not find sensitivity information');
+                        end
+                    end
+                end
+
+                % Sensitivity data found => insert into target matrix and estimate
+                % sensitivities, and regularisation factor.
+                [sRO, sPE1, sPE2, ~] = size(smap_data.ref); % k-space
+
+                % smap_data.ref stored by morse_unfold_unaccelerated as [RO, PE1, PE2,
+                % N_coils], in k-space.
+                % Pad this ref k-space data to match the dimensions of the
+                % undersampled data it is going to unfold. If morse_sense_one is
+                % preceeded by tukey_filter step it will have been filtered to zero
+                % at the k-space periphery so this should not introduce Gibbs ringing.
+                cRO = sRO/2; cPE1 = sPE1/2; cPE2 = sPE2/2; % k-space centre
+                data.sensitivities(end/2-cRO+1:end/2+cRO,end/2-cPE1+1:end/2+cPE1,end/2-cPE2+1:end/2+cPE2,:,:) = smap_data.ref;
+
+                % Fill noise covariance matrix
+                smap_noise_cov = smap_data.noise_cov;%; % used in utilities
+                data.noise_cov = smap_data.noise_cov;%; % used in steps
+
+                % For whitening on entry
+                L = chol(smap_noise_cov,'upper');
+                data.L_inv = inv(L);
+
+                % Compute regularised pseudo-inverse of sensitivities. Reference data passed on full target matrix.
+                data.sensitivities = sensitivity_function(data.sensitivities, PPIparams);
+
+            elseif strcmp(PPIparams.refType, 'other') % s-maps
+                disp('No acceleration. No sensitivities being retrieved')
+            end
+
         end
 
         % Time reversal and potentially online FT in RO direction
@@ -113,24 +190,26 @@ disp('accumulate_volume setup...')
             kspace_centre_line_no_y = bucket.data.header.user(6);
             kspace_centre_line_no_z = bucket.data.header.user(7);
         end
-        for ind = 1:bucket.data.count
-            % Ensure k-space center includes the central line in PE and 3D directions for odd acceleration with padding and partial Fourier cases.
-            encode_step_1 = bucket.data.header.kspace_encode_step_1(ind)+matrix_size.y_padded/2-kspace_centre_line_no_y;
-            encode_step_2 = bucket.data.header.kspace_encode_step_2(ind)+matrix_size.z_padded/2-kspace_centre_line_no_z;
-            contrast = bucket.data.header.contrast(ind);
-            set = bucket.data.header.set(ind);
 
-            data.data(:, :, encode_step_1+1, encode_step_2+1, contrast+1, set+1) = ...
-                transpose(squeeze(bucket.data.data(:, :, ind)));
-
-        end % Data buckets
+        % Ensure k-space center includes the central line in PE and 3D directions for odd acceleration with padding and partial Fourier cases.
+        encode_step_1 = bucket.data.header.kspace_encode_step_1+matrix_size.y_padded/2-kspace_centre_line_no_y;
+        encode_step_2 = bucket.data.header.kspace_encode_step_2+matrix_size.z_padded/2-kspace_centre_line_no_z;
+        contrast = bucket.data.header.contrast;
+        set = bucket.data.header.set;
+        idx = sub2ind(size(data.data, 3:6), encode_step_1+1, encode_step_2+1, contrast+1, set+1) ;
+        % whitening data upon accumulation when using separate reference
+        if strcmp(PPIparams.refType, 'separate') && size(data.noise_cov,1)~= 0  % s-maps with noise adjust data
+            data.data(:, :, idx) = permute(pagemtimes(bucket.data.data,data.L_inv),[2 1 3]);
+        else
+            data.data(:, :, idx) = permute(bucket.data.data,[2 1 3]);
+        end
 
         for ind = 1:bucket.ref.count
-            %
+
             % If reference lines are embedded they need to be gathered.
             % When no more reference lines remain to be collected, the
             % sensitivities are calculated. This is done for echo 1.
-            %
+
             contrast = bucket.ref.header.contrast(ind);
 
             if contrast == 0
@@ -139,7 +218,6 @@ disp('accumulate_volume setup...')
                 encode_step_2 = bucket.ref.header.kspace_encode_step_2(ind)+matrix_size.z_padded/2-kspace_centre_line_no_z;
 
                 data.sensitivities(:, encode_step_1+1, encode_step_2+1, :) = bucket.ref.data(:,:,ind);
-
 
                 nRefToCollect = nRefToCollect - 1; % decrement until 0
                 if nRefToCollect == 0
@@ -166,23 +244,33 @@ disp('accumulate_volume setup...')
 
         if ~acq.is_flag_set(acq.ACQ_LAST_IN_MEASUREMENT)
             disp('Not end of measurement, accumulating...')
-            subplot 121
-            imagesc(squeeze(abs(data.data(1,end/2,:,:,1,1)))) % temp display
-            title('Data')
-            subplot 122
-            imagesc(squeeze(abs(data.sensitivities(end/2,:,:,1)))) % temp display
-            title('Sensitivity')
+            if strcmp(PPIparams.refType, 'embedded')
+                subplot 121
+                imagesc(squeeze(abs(data.data(1,end/2,:,:,1,1)))) % temp display
+                title('Data')
+
+                subplot 122
+                imagesc(squeeze(abs(data.sensitivities(end/2,:,:,1)))) % temp display
+                title('Final Sensitivity')
+                drawnow
+            else
+                imagesc(squeeze(abs(data.data(1,end/2,:,:,1,1))))
+            end
             drawnow;
             data = accumulate_volume(input(), data);
         else
-
             disp('End of measurement...')
-            subplot 121
-            imagesc(squeeze(abs(data.data(1,end/2,:,:,1,1)))) % temp display
-            title('Final Data')
-            subplot 122
-            imagesc(squeeze(abs(data.sensitivities(end/2,:,:,1)))) % temp display
-            title('Final Sensitivity')
+            if strcmp(PPIparams.refType, 'embedded')
+                subplot 121
+                imagesc(squeeze(abs(data.data(1,end/2,:,:,1,1)))) % temp display
+                title('Final Data')
+                subplot 122
+                imagesc(squeeze(abs(data.sensitivities(end/2,:,:,1)))) % temp display
+                title('Final Sensitivity')
+            else
+                imagesc(squeeze(abs(data.data(1,end/2,:,:,1,1))))
+                title('Final Data')
+            end
             drawnow
         end
 
@@ -190,4 +278,3 @@ disp('accumulate_volume setup...')
 
 next = @() accumulate_volume(input(), []);
 end
-

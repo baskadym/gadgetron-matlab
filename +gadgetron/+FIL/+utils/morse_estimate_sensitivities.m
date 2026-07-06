@@ -1,4 +1,4 @@
-function [sens, regu] = morse_estimate_sensitivities(ref, PAD, measID)
+function [sens, regu, noise_cov] = morse_estimate_sensitivities(ref, PAD, PPIparams)
 %**************************************************************************
 %
 %   morse_estimate_sensitivities
@@ -13,7 +13,8 @@ function [sens, regu] = morse_estimate_sensitivities(ref, PAD, measID)
 %**************************************************************************
 global gadNoiseDir scaleNoiseCov vrc_mask_thr noise_cov_power ph_correction w N_ref N_order sens_grad_scale lambda
 
-%% Josephs et al. 2.2.1 Reduced voxel-wise computation
+%% Josephs, Dymerska et al., Online image reconstruction via Multiple Orthogonal Reference Sensitivity Encoding (MORSE), 
+%% MAGMA 2026 in print, Reduced voxel-wise computation
 % Extract only the reference data for computational efficiency
 [RO, PE1, PE2, N_coils] = size(ref);
 ref = reshape(ref, [], N_coils);      %[RO*PE1*PE2, N_coils]
@@ -41,13 +42,14 @@ ref = gadgetron.FIL.utils.cifftn(ref, 2:3);
 E = conj(ref(:,:,:,1:N_ref(1))).*permute(ref,[1 2 3 5 4]); 
 
 
-%% Josephs et al. 2.2.2 Flexible spatial weighting
-% Apply smoothing in all three spatial dimensions (Eq. 8):
+%% Josephs, Dymerska et al., Online image reconstruction via Multiple Orthogonal Reference Sensitivity Encoding (MORSE), 
+%% MAGMA 2026 in print, Flexible spatial weighting
+% Apply smoothing in all three spatial dimensions (Eq. 3):
 % Note: E is reused for memory efficiency.
 E = gadgetron.FIL.utils.mysmooth(E, w, PAD);
 
 
-%% Josephs et al. discussion point re incorporating sensitivity gradients
+%% Incorporating sensitivity gradients - optional and exploratory
 if length(N_ref) > 1
     disp('Appending sensitivity gradients')
     % Append centred, finite-difference estimate(s) of sensitivity gradients in each spatial direction.
@@ -58,9 +60,10 @@ if length(N_ref) > 1
 end
 
 
-%% Josephs et al. 2.2.3 Higher order sensitivity estimation
+%% Josephs, Dymerska et al., Online image reconstruction via Multiple Orthogonal Reference Sensitivity Encoding (MORSE), 
+%% MAGMA 2026 in print, Higher-order sensitivity estimation
 disp('E svd');
-% Voxel-wise SVD of E^w (Eq. 7)
+% Voxel-wise SVD of E^w (Eq. 4)
 % Permute to bring (eigen) targets-by-refs dimensions to beginning:
 E = permute(E,[5 4 1 2 3]);           % [N_coils, N_ref, RO, PE1, PE2]
 
@@ -70,7 +73,7 @@ E = permute(E,[5 4 1 2 3]);           % [N_coils, N_ref, RO, PE1, PE2]
 [E, S, ~] = pagesvd(E, 'econ');
 
 % Restore to original coil space from virtual coil space:
-sens = pagemtimes(conj(V), E);
+sens = pagemtimes(conj(V), E); 
 
 % Restore previous dimension ordering:
 sens = ipermute(sens,[5 4 1 2 3]);            % [RO, PE1, PE2, N_ref, N_coils]
@@ -80,20 +83,21 @@ S = ipermute(S,[5 4 1 2 3]);                  % [RO, PE1, PE2, N_ref, N_ref]
 S = squeeze(S(:,:,:,1:N_ref+1:end));
 % truncating sensitivities up to N_order
 sens = sens(:,:,:,1:N_order,:);
-% N_order regularisation terms from S principal value maps, (used in Eq. 11):
+% N_order regularisation terms from S principal value maps:
 if strcmp(lambda,'auto')
     regu = 1./(S(:,:,:,1:N_order) + eps); % [RO, PE1, PE2, N_ref, N_coils]
-    lambda = 10^2/ prctile(regu(:),99.9) ;
+    lambda = 100/ prctile(regu(:),99.9) ;
     fprintf('automatically selected regularisation factor lambda = %.2e\n',lambda)
     regu = lambda*regu ;
 else
     regu = lambda./ (S(:,:,:,1:N_order) + eps); % [RO, PE1, PE2, N_ref, N_coils]
 end
 
-
-%% Dymerska et al. Virtual Reference Coil phase correction to obtain phase data
+%% Dymerska et al. MORSE-PI – Flexible and artefact-free image reconstruction for structural and functional QSM and other phase-critical imaging applications.
+%% arXiv 2026 (https://arxiv.org/abs/2606.21336)
+% Virtual Reference Coil phase correction to obtain phase data
 % free from open-ended fringe lines
 if strcmp(ph_correction, 'VRC')
     ref_mag = sqrt(sum(abs(ref).^2,4));
-    sens = gadgetron.FIL.utils.vrc_phase_correction(sens, ref_mag, measID, N_coils, gadNoiseDir, scaleNoiseCov, vrc_mask_thr, noise_cov_power);
+    [sens, noise_cov] = gadgetron.FIL.utils.vrc_phase_correction(sens, ref_mag, PPIparams, N_coils, gadNoiseDir, scaleNoiseCov, vrc_mask_thr, noise_cov_power);
 end

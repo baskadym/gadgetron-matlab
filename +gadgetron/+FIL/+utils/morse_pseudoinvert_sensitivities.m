@@ -38,9 +38,14 @@ regu_diag = reshape(regu_diag, size(regu,1), size(regu,1), []);
 % Append regularisation to sensitivities:
 s = cat(1, sens, regu_diag);
 
-% Copmute pseudo-inverse as inv(S' S)S' 
-pinv_sens = pagemtimes(s, 'ctranspose', s, 'none') ; 
+% Compute pseudo-inverse as inv(S' S)S' 
+% S' S
+pinv_sens = pagemtimes(s, 'ctranspose', s, 'none') ;
+
+% inv(S' S)
 pinv_sens = pageinv(pinv_sens);
+
+% inv(S' S)S
 pinv_sens = pagemtimes(pinv_sens, 'none', s, 'ctranspose');
 
 % Retain only the first N_alias rows of the pseudo-inverse:

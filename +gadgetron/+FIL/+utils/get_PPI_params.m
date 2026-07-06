@@ -18,8 +18,15 @@ else
     PPIparams.caipiFactor = 0;
 end
 
+% separate/embedded/other flag for unfolding reference
+PPIparams.refType = header.encoding.parallelImaging.calibrationMode;
+PPIparams.kmin_PE1 = header.encoding.encodingLimits.kspace_encoding_step_1.minimum + 1 ; % from 0-indexed c++ to matlab
+PPIparams.kmax_PE1 = header.encoding.encodingLimits.kspace_encoding_step_1.maximum + 1 ; % from 0-indexed c++ to matlab
+
+PPIparams.kmin_PE2 = header.encoding.encodingLimits.kspace_encoding_step_2.minimum + 1 ; % from 0-indexed c++ to matlab
+PPIparams.kmax_PE2 = header.encoding.encodingLimits.kspace_encoding_step_2.maximum + 1 ; % from 0-indexed c++ to matlab
+
 % Calculating smoothing kernel
 PPIparams.FoV = header.encoding.encodedSpace.fieldOfView_mm;
 PPIparams.matSize = header.encoding.encodedSpace.matrixSize;
-
 end
